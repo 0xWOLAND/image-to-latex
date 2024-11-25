@@ -14,8 +14,12 @@ import {
   HStack,
   SimpleGrid,
   Progress,
+  Grid,
+  GridItem,
 } from '@chakra-ui/react';
-import { AddIcon, CloseIcon } from '@chakra-ui/icons';
+import { AddIcon, CloseIcon, RepeatIcon } from '@chakra-ui/icons';
+import 'katex/dist/katex.min.css';
+import { InlineMath, BlockMath } from 'react-katex';
 
 function App() {
   const [selectedImages, setSelectedImages] = useState([]);
@@ -25,6 +29,8 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const toast = useToast();
+  const [isFixingLatex, setIsFixingLatex] = useState(false);
+  const [renderError, setRenderError] = useState(null);
 
   const handleFile = (files) => {
     const validFiles = Array.from(files).filter(file => {
@@ -173,12 +179,95 @@ function App() {
     setImagePreview(prev => prev.filter((_, i) => i !== index));
   };
 
+  const fixLatexCode = async (brokenLatex) => {
+    setIsFixingLatex(true);
+    try {
+      const response = await fetch('/api/combine', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          latexCodes: [brokenLatex],
+          fix: true, // Signal to the backend that we need a fix
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fix LaTeX code');
+      }
+
+      const data = await response.json();
+      setLatexResult(data.combinedLatex);
+      setRenderError(null);
+    } catch (error) {
+      toast({
+        title: 'Failed to fix LaTeX code',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsFixingLatex(false);
+    }
+  };
+
+  const handleLatexError = (error) => {
+    setRenderError(error);
+    toast({
+      title: 'LaTeX Rendering Error',
+      description: 'There was an error rendering the LaTeX. Click "Fix LaTeX" to attempt automatic correction.',
+      status: 'warning',
+      duration: 5000,
+      isClosable: true,
   return (
     <ChakraProvider>
       <Container maxW="container.xl" py={10}>
         <VStack spacing={8}>
           <Heading>Image to LaTeX Converter</Heading>
           <Text>Upload images to convert them to LaTeX code</Text>
+
+          {latexResult && (
+            <Grid templateColumns={["1fr", "1fr", "1fr 1fr"]} gap={6} w="full">
+              <GridItem>
+                <Box w="full">
+                  <Text mb={2} fontWeight="bold">
+                    LaTeX Code:
+                  </Text>
+                  <Textarea
+                    value={latexResult}
+                    isReadOnly
+                    minH="200px"
+                    fontFamily="mono"
+                  />
+                  <Button
+                    mt={2}
+                    size="sm"
+                    onClick={() => navigator.clipboard.writeText(latexResult)}
+                  >
+                    Copy to Clipboard
+                  </Button>
+                </Box>
+              </GridItem>
+              <GridItem>
+                <Box w="full">
+                  <Text mb={2} fontWeight="bold">
+                    Preview:
+                  </Text>
+                  <Box
+                    p={4}
+                    borderWidth={1}
+                    borderRadius="md"
+                    minH="200px"
+                    overflowX="auto"
+                  >
+                    <BlockMath math={latexResult} errorColor="#ff0000" />
+                  </Box>
+                </Box>
+              </GridItem>
+            </Grid>
+          )}
 
           <Box
             borderWidth={2}
@@ -278,27 +367,6 @@ function App() {
               <Text mt={2} fontSize="sm" color="gray.500" textAlign="center">
                 Converting images... {Math.round(progress)}%
               </Text>
-            </Box>
-          )}
-
-          {latexResult && (
-            <Box w="full">
-              <Text mb={2} fontWeight="bold">
-                LaTeX Code:
-              </Text>
-              <Textarea
-                value={latexResult}
-                isReadOnly
-                minH="200px"
-                fontFamily="mono"
-              />
-              <Button
-                mt={2}
-                size="sm"
-                onClick={() => navigator.clipboard.writeText(latexResult)}
-              >
-                Copy to Clipboard
-              </Button>
             </Box>
           )}
         </VStack>
