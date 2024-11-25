@@ -69,7 +69,29 @@ function App() {
         background: transparent !important;
         padding: 0 !important;
       }
-      /* Custom Monokai colors for light/dark modes */
+      /* Line numbers container */
+      .code-with-lines {
+        display: table;
+        width: 100%;
+      }
+      .line {
+        display: table-row;
+        line-height: 1.5;
+      }
+      .line-number {
+        display: table-cell;
+        text-align: right;
+        padding-right: 1em;
+        width: 1%;
+        min-width: 2em;
+        color: #75715e !important;
+        user-select: none;
+      }
+      .line-content {
+        display: table-cell;
+        white-space: pre-wrap;
+      }
+      /* Existing Monokai colors */
       pre code {
         color: #f8f8f2 !important;
       }
@@ -308,6 +330,18 @@ function App() {
     setImagePreview(prev => prev.filter((_, i) => i !== index));
   };
 
+  const addLineNumbers = (highlightedCode) => {
+    const lines = highlightedCode.split('\n');
+    return lines
+      .map((line, index) => `
+        <div class="line">
+          <span class="line-number">${index + 1}</span>
+          <span class="line-content">${line || ' '}</span>
+        </div>
+      `)
+      .join('');
+  };
+
   return (
     <ChakraProvider>
       <Container maxW="container.xl" py={10}>
@@ -367,15 +401,15 @@ function App() {
                         padding: '16px',
                         fontSize: '14px',
                         fontFamily: 'monospace',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                        overflowWrap: 'break-word',
                         backgroundColor: 'transparent',
                       }}
                     >
                       <code
+                        className="code-with-lines"
                         dangerouslySetInnerHTML={{
-                          __html: latexResult ? hljs.highlight(latexResult, { language: 'latex' }).value : ''
+                          __html: latexResult 
+                            ? addLineNumbers(hljs.highlight(latexResult, { language: 'latex' }).value)
+                            : ''
                         }}
                       />
                     </pre>
@@ -466,7 +500,9 @@ function App() {
                 : "gray.600"
             }
             p={8}
-            w="full"
+            w="container.lg"
+            maxW="container.lg"
+            mx="auto"
             textAlign="center"
             position="relative"
             onDragEnter={handleDragIn}
@@ -566,28 +602,30 @@ function App() {
             </VStack>
           </Box>
 
-          <motion.div
-            whileHover={{ 
-              scale: selectedImages.length > 0 ? 1.02 : 1 
-            }}
-            whileTap={{ 
-              scale: selectedImages.length > 0 ? 0.98 : 1 
-            }}
-          >
-            <Button
-              colorScheme="green"
-              isLoading={isLoading}
-              onClick={handleSubmit}
-              w="full"
-              isDisabled={selectedImages.length === 0}
-              leftIcon={<FiPlus size={18} />}
+          <Box w="container.lg" maxW="container.lg" mx="auto">
+            <motion.div
+              whileHover={{ 
+                scale: selectedImages.length > 0 ? 1.02 : 1 
+              }}
+              whileTap={{ 
+                scale: selectedImages.length > 0 ? 0.98 : 1 
+              }}
             >
-              Convert to LaTeX
-            </Button>
-          </motion.div>
+              <Button
+                colorScheme="green"
+                isLoading={isLoading}
+                onClick={handleSubmit}
+                w="full"
+                isDisabled={selectedImages.length === 0}
+                leftIcon={<FiPlus size={18} />}
+              >
+                Convert to LaTeX
+              </Button>
+            </motion.div>
+          </Box>
 
           {isLoading && (
-            <Box w="full">
+            <Box w="container.lg" maxW="container.lg" mx="auto">
               <Progress 
                 value={progress} 
                 size="sm" 
