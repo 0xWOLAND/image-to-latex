@@ -29,7 +29,8 @@ import {
   FiX, 
   FiDownload, 
   FiCopy, 
-  FiPlus 
+  FiPlus, 
+  FiFileText 
 } from 'react-icons/fi';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -60,6 +61,8 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isCompiling, setIsCompiling] = useState(false);
+  const [isPdfProcessing, setIsPdfProcessing] = useState(false);
+  const [tempImages, setTempImages] = useState([]);
   const toast = useToast();
 
   useEffect(() => {
@@ -131,6 +134,12 @@ function App() {
   }, [colorMode]);
 
   const handleFile = (files) => {
+    const file = files[0]; // Handle one file at a time
+    if (file.type.includes('pdf')) {
+      handlePdfUpload(file);
+      return;
+    }
+    
     const validFiles = Array.from(files).filter(file => {
       if (file.type.startsWith('image/')) {
         return true;
@@ -387,6 +396,81 @@ ${latexResult}
     form.submit();
     document.body.removeChild(form);
   };
+
+  const handlePdfUpload = async (file) => {
+    if (!file.type.includes('pdf')) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload a PDF file',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsPdfProcessing(true);
+    const formData = new FormData();
+    formData.append('pdf', file);
+
+    try {
+      const response = await fetch('/api/upload-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process PDF');
+      }
+
+      const data = await response.json();
+      setImagePreview(data.images);
+      setTempImages(data.images);
+      
+      // Convert the image URLs to File objects
+      const imageFiles = await Promise.all(
+        data.images.map(async (url) => {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          return new File([blob], `page_${Math.random()}.png`, { type: 'image/png' });
+        })
+      );
+      
+      setSelectedImages(imageFiles);
+    } catch (error) {
+      toast({
+        title: 'PDF processing failed',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsPdfProcessing(false);
+    }
+  };
+
+  const cleanup = async () => {
+    if (tempImages.length > 0) {
+      try {
+        await fetch('/api/cleanup-temp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ images: tempImages }),
+        });
+      } catch (error) {
+        console.error('Failed to cleanup temporary files:', error);
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [tempImages]);
 
   return (
     <ChakraProvider>
@@ -659,7 +743,7 @@ ${latexResult}
               </HStack>
               
               <Text fontSize="sm" color="gray.500">
-                or drag and drop your images here
+                or drag and drop your images/PDF here
               </Text>
             </VStack>
           </Box>
@@ -700,6 +784,15 @@ ${latexResult}
                 textAlign="center"
               >
                 Converting images... {Math.round(progress)}%
+              </Text>
+            </Box>
+          )}
+
+          {isPdfProcessing && (
+            <Box w="container.lg" maxW="container.lg" mx="auto">
+              <Progress size="sm" isIndeterminate />
+              <Text mt={2} fontSize="sm" color="gray.500" textAlign="center">
+                Processing PDF...
               </Text>
             </Box>
           )}
