@@ -342,6 +342,58 @@ function App() {
       .join('');
   };
 
+  const openInOverleaf = () => {
+    // Create a minimal LaTeX document structure, checking if latexResult already has a documentclass
+    const hasDocumentClass = latexResult.includes('\\documentclass');
+    const hasBeginDocument = latexResult.includes('\\begin{document}');
+    
+    let fullLatexDocument;
+    
+    if (hasDocumentClass && hasBeginDocument) {
+      // If the result already has the structure, use it as is
+      fullLatexDocument = latexResult;
+    } else if (hasDocumentClass) {
+      // If it has documentclass but no begin document
+      fullLatexDocument = `${latexResult.split('\\begin{document}')[0]}
+\\begin{document}
+
+${latexResult.split('\\begin{document}')[1] || latexResult}
+
+\\end{document}`;
+    } else {
+      // If it needs the complete wrapper
+      fullLatexDocument = `\\documentclass{article}
+\\usepackage{amsmath}
+\\usepackage{amsfonts}
+\\usepackage{amssymb}
+\\begin{document}
+
+${latexResult}
+
+\\end{document}`;
+    }
+
+    // Create a form element
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = 'https://www.overleaf.com/docs';
+    form.target = '_blank';
+
+    // Create input for the LaTeX content
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'snip';
+    input.value = fullLatexDocument;
+
+    // Add input to form
+    form.appendChild(input);
+
+    // Add form to document, submit it, and remove it
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+  };
+
   return (
     <ChakraProvider>
       <Container maxW="container.xl" py={10}>
@@ -418,18 +470,30 @@ function App() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
-                    <Button
-                      mt={2}
-                      size="sm"
-                      onClick={() => navigator.clipboard.writeText(latexResult)}
-                      bg={colorMode === 'dark' ? 'gray.700' : 'gray.100'}
-                      _hover={{
-                        bg: colorMode === 'dark' ? 'gray.600' : 'gray.200'
-                      }}
-                      leftIcon={<FiCopy size={16} />}
-                    >
-                      Copy to Clipboard
-                    </Button>
+                    <HStack spacing={2}>
+                      <Button
+                        mt={2}
+                        size="sm"
+                        onClick={() => navigator.clipboard.writeText(latexResult)}
+                        bg={colorMode === 'dark' ? 'gray.700' : 'gray.100'}
+                        _hover={{
+                          bg: colorMode === 'dark' ? 'gray.600' : 'gray.200'
+                        }}
+                        leftIcon={<FiCopy size={16} />}
+                      >
+                        Copy to Clipboard
+                      </Button>
+                      <Button
+                        mt={2}
+                        size="sm"
+                        onClick={openInOverleaf}
+                        colorScheme="green"
+                        isDisabled={!latexResult}
+                        leftIcon={<ExternalLinkIcon />}
+                      >
+                        Open in Overleaf
+                      </Button>
+                    </HStack>
                   </motion.div>
                 </Box>
               </GridItem>
