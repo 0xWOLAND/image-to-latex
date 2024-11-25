@@ -203,44 +203,79 @@ function App() {
 
     setIsLoading(true);
     setProgress(0);
-    const latexResults = [];
 
     try {
-      // Process each image individually
-      for (let i = 0; i < selectedImages.length; i++) {
-        const formData = new FormData();
-        formData.append('image', selectedImages[i]);
-        formData.append('context', documentContext);
+      // Calculate how much progress each image conversion should represent
+      const progressPerImage = 60 / selectedImages.length; // Reserve 60% for image conversion
+      let currentProgress = 0;
 
-        const response = await fetch('/api/convert', {
-          method: 'POST',
-          body: formData,
-        });
+      // Create form data with multiple images
+      const formData = new FormData();
+      selectedImages.forEach(image => {
+        formData.append('images', image);
+      });
+      formData.append('context', documentContext);
 
-        if (!response.ok) {
-          throw new Error(`Failed to convert image ${i + 1}`);
+      // Set initial progress for starting the request
+      setProgress(5);
+
+      // Create EventSource for progress updates
+      const eventSource = new EventSource('/api/convert-multiple/progress');
+      
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.progress) {
+          // Calculate total progress (5% initial + up to 60% for conversions)
+          const conversionProgress = 5 + (data.progress * 0.6);
+          setProgress(Math.min(65, conversionProgress));
         }
+      };
 
-        const data = await response.json();
-        latexResults.push(data.latex);
-        setProgress((i + 1) * (80 / selectedImages.length));
+      const response = await fetch('/api/convert-multiple', {
+        method: 'POST',
+        body: formData,
+      });
+
+      // Close the EventSource
+      eventSource.close();
+
+      if (!response.ok) {
+        throw new Error('Conversion failed');
       }
 
-      // Combine LaTeX results locally
-      const combinedLatex = combineLatexDocuments(latexResults);
-      setLatexResult(combinedLatex);
+      const data = await response.json();
+      
+      setProgress(70);
 
-      // Compile the combined result
-      await compilePdf(combinedLatex);
+      if (data.failedCount > 0) {
+        toast({
+          title: `${data.failedCount} image(s) failed to convert`,
+          description: 'Some images were not converted successfully',
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+
+      if (data.results.length > 0) {
+        setProgress(80);
+        
+        const combinedLatex = combineLatexDocuments(data.results);
+        setLatexResult(combinedLatex);
+
+        setProgress(90);
+        
+        await compilePdf(combinedLatex);
+
+        toast({
+          title: 'Conversion successful',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        });
+      }
 
       setProgress(100);
-      
-      toast({
-        title: 'Conversion successful',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
     } catch (error) {
       toast({
         title: 'Conversion failed',

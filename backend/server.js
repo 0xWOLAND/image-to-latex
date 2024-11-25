@@ -14,6 +14,8 @@ const execAsync = util.promisify(exec);
 // Add at the top with other imports
 const { fromPath } = require('pdf2pic');
 const sharp = require('sharp');
+const EventEmitter = require('events');
+const progressEmitter = new EventEmitter();
 
 dotenv.config();
 
@@ -134,6 +136,135 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Conversion failed' });
+  }
+});
+
+// Add new endpoint for SSE progress updates
+app.get('/api/convert-multiple/progress', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const sendProgress = (progress) => {
+    res.write(`data: ${JSON.stringify({ progress })}\n\n`);
+  };
+
+  progressEmitter.on('progress', sendProgress);
+
+  req.on('close', () => {
+    progressEmitter.removeListener('progress', sendProgress);
+  });
+});
+
+app.post('/api/convert-multiple', upload.array('images'), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No images provided' });
+    }
+
+    const context = req.body.context || '';
+    const totalImages = req.files.length;
+    let completedImages = 0;
+    
+    // Process all images in parallel
+    const conversionPromises = req.files.map(async (file, index) => {
+      try {
+        const imageBuffer = fs.readFileSync(file.path);
+        const base64Image = imageBuffer.toString('base64');
+
+        const completion = await openai.chat.completions.create({
+          model: "grok-vision-beta",
+          messages: [
+            {
+              role: "system",
+              content: "You are a LaTeX converter. Return the complete LaTeX code needed to reproduce the image, including any necessary packages and document structure."
+            },
+            {
+              role: "user",
+              content: [
+                { 
+                  type: "text", 
+                  text: `Context about the document: ${context}\n\nConvert this image to LaTeX code. Return the complete LaTeX document that would reproduce this image.` 
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:image/jpeg;base64,${base64Image}`
+                  }
+                }
+              ]
+            }
+          ]
+        });
+
+        // Clean up the file
+        fs.unlinkSync(file.path);
+
+        // Clean the response
+        let latex = completion.choices[0].message.content;
+        if (latex.includes('```')) {
+          latex = latex.split('```')[1].replace('latex', '').trim();
+        }
+
+        completedImages++;
+        const progress = Math.round((completedImages / totalImages) * 100);
+        progressEmitter.emit('progress', progress);
+        
+        return { 
+          success: true, 
+          latex,
+          progress
+        };
+      } catch (error) {
+        console.error(`Error processing image ${file.originalname}:`, error);
+        completedImages++;
+        const progress = Math.round((completedImages / totalImages) * 100);
+        progressEmitter.emit('progress', progress);
+        
+        return { 
+          success: false, 
+          error: error.message, 
+          file: file.originalname,
+          progress
+        };
+      }
+    });
+
+    // Wait for all conversions to complete
+    const results = await Promise.allSettled(conversionPromises);
+
+    // Process results
+    const successfulResults = results
+      .filter(result => result.status === 'fulfilled' && result.value.success)
+      .map(result => result.value.latex);
+
+    const failedResults = results
+      .filter(result => result.status === 'rejected' || !result.value.success)
+      .map(result => result.status === 'rejected' ? result.reason : result.value);
+
+    if (successfulResults.length === 0) {
+      return res.status(500).json({
+        error: 'All conversions failed',
+        failures: failedResults,
+        progress: 100
+      });
+    }
+
+    res.json({
+      success: true,
+      results: successfulResults,
+      failedCount: failedResults.length,
+      failures: failedResults,
+      progress: 100
+    });
+
+  } catch (error) {
+    console.error('Error in batch conversion:', error);
+    res.status(500).json({ 
+      error: 'Batch conversion failed', 
+      details: error.message,
+      progress: 100
+    });
   }
 });
 
