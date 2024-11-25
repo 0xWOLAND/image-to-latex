@@ -140,6 +140,8 @@ function App() {
         setProgress((i + 1) * (80 / selectedImages.length));
       }
 
+      let finalLatex;
+      
       // If there's more than one image, combine the results
       if (latexResults.length > 1) {
         const response = await fetch('/api/combine', {
@@ -155,13 +157,15 @@ function App() {
         }
 
         const data = await response.json();
-        setLatexResult(data.latex);
+        finalLatex = data.combinedLatex;
+        setLatexResult(finalLatex);
       } else {
-        setLatexResult(latexResults[0]);
+        finalLatex = latexResults[0];
+        setLatexResult(finalLatex);
       }
 
-      // Compile to PDF
-      await compilePdf(latexResults.length > 1 ? latexResult : latexResults[0]);
+      // Use finalLatex instead of latexResult
+      await compilePdf(finalLatex);
 
       setProgress(100);
       
