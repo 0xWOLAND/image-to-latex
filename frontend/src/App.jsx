@@ -35,8 +35,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import hljs from 'highlight.js/lib/core';
 import latex from 'highlight.js/lib/languages/latex';
-import 'highlight.js/styles/github-dark.css'; // for dark mode
-import 'highlight.js/styles/github.css'; // for light mode
+import 'highlight.js/styles/monokai.css';
 
 // Register the LaTeX language
 hljs.registerLanguage('latex', latex);
@@ -64,13 +63,45 @@ function App() {
   const toast = useToast();
 
   useEffect(() => {
-    // Add custom styles to handle light/dark mode
     const style = document.createElement('style');
     style.textContent = `
       .hljs {
         background: transparent !important;
         padding: 0 !important;
-        color: ${colorMode === 'dark' ? '#E0E0E0' : '#2D3748'} !important;
+      }
+      /* Custom Monokai colors for light/dark modes */
+      pre code {
+        color: #f8f8f2 !important;
+      }
+      pre code .hljs-keyword,
+      pre code .hljs-selector-tag,
+      pre code .hljs-tag {
+        color: #f92672 !important;
+      }
+      pre code .hljs-template-tag {
+        color: #ae81ff !important;
+      }
+      pre code .hljs-number {
+        color: #ae81ff !important;
+      }
+      pre code .hljs-variable,
+      pre code .hljs-template-variable,
+      pre code .hljs-attribute {
+        color: #66d9ef !important;
+      }
+      pre code .hljs-literal {
+        color: #ae81ff !important;
+      }
+      pre code .hljs-string,
+      pre code .hljs-regexp,
+      pre code .hljs-addition,
+      pre code .hljs-attribute-value {
+        color: #e6db74 !important;
+      }
+      pre code .hljs-comment,
+      pre code .hljs-quote,
+      pre code .hljs-deletion {
+        color: #75715e !important;
       }
     `;
     document.head.appendChild(style);
@@ -327,19 +358,20 @@ function App() {
                     borderRadius="md"
                     borderColor={colorMode === 'dark' ? 'gray.600' : 'gray.200'}
                     overflow="auto"
+                    backgroundColor="#272822"
                   >
                     <pre
                       style={{
                         margin: 0,
-                        height: '100%',
+                        minHeight: '100%',
                         padding: '16px',
                         fontSize: '14px',
                         fontFamily: 'monospace',
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
                         overflowWrap: 'break-word',
+                        backgroundColor: 'transparent',
                       }}
-                      className={colorMode === 'dark' ? 'github-dark' : 'github'}
                     >
                       <code
                         dangerouslySetInnerHTML={{
