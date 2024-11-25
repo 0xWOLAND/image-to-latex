@@ -8,6 +8,7 @@ const path = require('path');
 dotenv.config();
 
 const app = express();
+app.use(express.json());
 const upload = multer({ dest: 'uploads/' });
 
 const openai = new OpenAI({
@@ -28,11 +29,15 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
       model: "grok-vision-beta",
       messages: [
         {
+          role: "system",
+          content: "You are a LaTeX converter. You must respond with ONLY the LaTeX code needed to reproduce the image. No explanations, no markdown formatting, no additional text."
+        },
+        {
           role: "user",
           content: [
             { 
               type: "text", 
-              text: "Convert this image to LaTeX code. Please provide the complete LaTeX code that would reproduce this image." 
+              text: "Convert this image to LaTeX code. Return ONLY the LaTeX code with no additional text or formatting." 
             },
             {
               type: "image_url",
@@ -48,10 +53,51 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
     // Clean up uploaded file
     fs.unlinkSync(req.file.path);
 
-    res.json({ latex: completion.choices[0].message.content });
+    // Clean the response if it contains markdown or explanations
+    let latex = completion.choices[0].message.content;
+    if (latex.includes('```')) {
+      latex = latex.split('```')[1].replace('latex', '').trim();
+    }
+
+    res.json({ latex });
   } catch (error) {
     console.error('Error:', error);
     res.status(500).json({ error: 'Conversion failed' });
+  }
+});
+
+app.post('/api/combine', async (req, res) => {
+  try {
+    const { latexCodes } = req.body;
+    
+    if (!latexCodes || !Array.isArray(latexCodes)) {
+      return res.status(400).json({ error: 'Invalid LaTeX codes provided' });
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: "grok-beta",
+      messages: [
+        {
+          role: "system",
+          content: "You are a LaTeX combiner. You must respond with ONLY the combined LaTeX code. No explanations, no markdown formatting, no additional text."
+        },
+        {
+          role: "user",
+          content: `Here are multiple LaTeX code snippets. Combine them into a single coherent LaTeX document. Return ONLY the combined LaTeX code with no additional text or formatting:\n\n${latexCodes.join('\n\n=====\n\n')}`
+        }
+      ]
+    });
+
+    // Clean the response if it contains markdown or explanations
+    let latex = completion.choices[0].message.content;
+    if (latex.includes('```')) {
+      latex = latex.split('```')[1].replace('latex', '').trim();
+    }
+
+    res.json({ combinedLatex: latex });
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Failed to combine LaTeX codes' });
   }
 });
 
