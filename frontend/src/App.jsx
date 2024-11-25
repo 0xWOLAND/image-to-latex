@@ -274,7 +274,6 @@ function App() {
 
   const compilePdf = async (latex) => {
     setIsCompiling(true);
-    console.log("Starting PDF compilation with LaTeX:", latex);
     
     try {
       const response = await fetch('/api/compile', {
@@ -285,15 +284,12 @@ function App() {
         body: JSON.stringify({ latex }),
       });
 
-      console.log("Received response:", response.status, response.statusText);
-
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.details || 'Failed to compile PDF');
       }
 
       const data = await response.json();
-      console.log("Compilation successful, PDF URL:", data.pdfUrl);
       const baseUrl = import.meta.env.DEV ? 'http://localhost:3001' : '';
       setPdfUrl(`${baseUrl}${data.pdfUrl}`);
 
@@ -304,7 +300,6 @@ function App() {
         isClosable: true,
       });
     } catch (error) {
-      console.error("Compilation error:", error);
       toast({
         title: 'PDF Compilation failed',
         description: error.message,
@@ -314,7 +309,6 @@ function App() {
       });
     } finally {
       setIsCompiling(false);
-      console.log("Compilation process completed");
     }
   };
 
@@ -475,9 +469,13 @@ ${latexResult}
                         mt={2}
                         size="sm"
                         onClick={() => navigator.clipboard.writeText(latexResult)}
-                        bg={colorMode === 'dark' ? 'gray.700' : 'gray.100'}
+                        bg={colorMode === 'dark' ? 'gray.700' : 'white'}
+                        color={colorMode === 'dark' ? 'gray.200' : 'gray.800'}
+                        borderWidth={1}
+                        borderColor={colorMode === 'dark' ? 'gray.600' : 'gray.200'}
                         _hover={{
-                          bg: colorMode === 'dark' ? 'gray.600' : 'gray.200'
+                          bg: colorMode === 'dark' ? 'gray.600' : 'gray.50',
+                          borderColor: colorMode === 'dark' ? 'gray.500' : 'gray.300'
                         }}
                         leftIcon={<FiCopy size={16} />}
                       >

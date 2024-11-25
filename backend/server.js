@@ -111,33 +111,25 @@ app.post('/api/combine', async (req, res) => {
     });
 
     let latex = completion.choices[0].message.content;
-    console.log("Raw response:", latex);
 
-    // More robust markdown cleanup
     if (latex.includes('```')) {
-      // Find content between backticks, ignoring the language identifier
       const matches = latex.match(/```(?:latex)?([\s\S]*?)```/);
       latex = matches ? matches[1].trim() : latex;
     }
 
-    // Ensure we have proper document structure
     if (!latex.includes('\\documentclass')) {
       latex = `\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\begin{document}\n${latex}\n\\end{document}`;
     }
 
-    // Validate that we have actual LaTeX content
     if (!latex || latex.trim().length === 0) {
       throw new Error('No valid LaTeX content generated');
     }
-
-    console.log("Final processed LaTeX:", latex);
     
     res.json({ 
       combinedLatex: latex,
       success: true 
     });
   } catch (error) {
-    console.error('Error:', error);
     res.status(500).json({ 
       error: 'Failed to combine LaTeX codes',
       details: error.message 
@@ -148,10 +140,8 @@ app.post('/api/combine', async (req, res) => {
 app.post('/api/compile', async (req, res) => {
   try {
     const { latex: latexCode } = req.body;
-    console.log("Received compile request with latex length:", latexCode?.length);
     
     if (!latexCode || typeof latexCode !== 'string') {
-      console.error('Invalid LaTeX code received:', latexCode);
       return res.status(400).json({ 
         error: 'No valid LaTeX code provided',
         received: latexCode 
@@ -175,16 +165,11 @@ app.post('/api/compile', async (req, res) => {
       output.on('finish', resolve);
     });
 
-    // Log the file creation
-    console.log(`PDF file created at: ${outputFile}`);
-    console.log(`File exists: ${fs.existsSync(outputFile)}`);
-
     res.json({
       success: true,
       pdfUrl: `/public/${pdfFilename}`
     });
   } catch (error) {
-    console.error('Compilation error:', error);
     res.status(500).json({ 
       error: 'PDF compilation failed',
       details: error.message
@@ -196,16 +181,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Add this debugging route to check if files exist
-app.get('/public/*', (req, res, next) => {
-  console.log('Attempting to access:', req.path);
-  console.log('Full file path:', path.join(__dirname, req.path));
-  next();
-});
-
 // Add error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
   res.status(500).json({ error: 'Something broke!', details: err.message });
 });
 
