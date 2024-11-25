@@ -19,6 +19,9 @@ import {
   Link,
   useColorMode,
   IconButton,
+  Switch,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react';
 import { AddIcon, CloseIcon, DownloadIcon, ExternalLinkIcon, MoonIcon, SunIcon } from '@chakra-ui/icons';
 import { motion } from 'framer-motion';
@@ -60,6 +63,7 @@ function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isCompiling, setIsCompiling] = useState(false);
+  const [outputFormat, setOutputFormat] = useState('latex'); // 'latex' or 'typst'
   const toast = useToast();
 
   useEffect(() => {
@@ -202,13 +206,14 @@ function App() {
 
     setIsLoading(true);
     setProgress(0);
-    const latexResults = [];
+    const results = [];
 
     try {
       // Process each image individually
       for (let i = 0; i < selectedImages.length; i++) {
         const formData = new FormData();
         formData.append('image', selectedImages[i]);
+        formData.append('format', outputFormat);
 
         const response = await fetch('/api/convert', {
           method: 'POST',
@@ -220,36 +225,38 @@ function App() {
         }
 
         const data = await response.json();
-        latexResults.push(data.latex);
+        results.push(outputFormat === 'latex' ? data.latex : data.typst);
         setProgress((i + 1) * (80 / selectedImages.length));
       }
 
-      let finalLatex;
+      let finalResult;
       
       // If there's more than one image, combine the results
-      if (latexResults.length > 1) {
+      if (results.length > 1) {
         const response = await fetch('/api/combine', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ latexCodes: latexResults }),
+          body: JSON.stringify({ 
+            codes: results,
+            format: outputFormat 
+          }),
         });
 
         if (!response.ok) {
-          throw new Error('Failed to combine LaTeX results');
+          throw new Error('Failed to combine results');
         }
 
         const data = await response.json();
-        finalLatex = data.combinedLatex;
-        setLatexResult(finalLatex);
+        finalResult = outputFormat === 'latex' ? data.combinedLatex : data.combinedTypst;
+        setLatexResult(finalResult);
       } else {
-        finalLatex = latexResults[0];
-        setLatexResult(finalLatex);
+        finalResult = results[0];
+        setLatexResult(finalResult);
       }
 
-      // Use finalLatex instead of latexResult
-      await compilePdf(finalLatex);
+      await compilePdf(finalResult);
 
       setProgress(100);
       
@@ -272,7 +279,7 @@ function App() {
     }
   };
 
-  const compilePdf = async (latex) => {
+  const compilePdf = async (code) => {
     setIsCompiling(true);
     
     try {
@@ -281,7 +288,10 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ latex }),
+        body: JSON.stringify({ 
+          code,
+          format: outputFormat 
+        }),
       });
 
       if (!response.ok) {
@@ -336,27 +346,28 @@ function App() {
       .join('');
   };
 
-  const openInOverleaf = () => {
-    // Create a minimal LaTeX document structure, checking if latexResult already has a documentclass
-    const hasDocumentClass = latexResult.includes('\\documentclass');
-    const hasBeginDocument = latexResult.includes('\\begin{document}');
-    
-    let fullLatexDocument;
-    
-    if (hasDocumentClass && hasBeginDocument) {
-      // If the result already has the structure, use it as is
-      fullLatexDocument = latexResult;
-    } else if (hasDocumentClass) {
-      // If it has documentclass but no begin document
-      fullLatexDocument = `${latexResult.split('\\begin{document}')[0]}
+  const openInEditor = () => {
+    if (outputFormat === 'latex') {
+      // Create a minimal LaTeX document structure, checking if latexResult already has a documentclass
+      const hasDocumentClass = latexResult.includes('\\documentclass');
+      const hasBeginDocument = latexResult.includes('\\begin{document}');
+      
+      let fullLatexDocument;
+      
+      if (hasDocumentClass && hasBeginDocument) {
+        // If the result already has the structure, use it as is
+        fullLatexDocument = latexResult;
+      } else if (hasDocumentClass) {
+        // If it has documentclass but no begin document
+        fullLatexDocument = `${latexResult.split('\\begin{document}')[0]}
 \\begin{document}
 
 ${latexResult.split('\\begin{document}')[1] || latexResult}
 
 \\end{document}`;
-    } else {
-      // If it needs the complete wrapper
-      fullLatexDocument = `\\documentclass{article}
+      } else {
+        // If it needs the complete wrapper
+        fullLatexDocument = `\\documentclass{article}
 \\usepackage{amsmath}
 \\usepackage{amsfonts}
 \\usepackage{amssymb}
@@ -365,27 +376,32 @@ ${latexResult.split('\\begin{document}')[1] || latexResult}
 ${latexResult}
 
 \\end{document}`;
+      }
+
+      // Create a form element for Overleaf
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = 'https://www.overleaf.com/docs';
+      form.target = '_blank';
+
+      // Create input for the LaTeX content
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'snip';
+      input.value = fullLatexDocument;
+
+      // Add input to form
+      form.appendChild(input);
+
+      // Add form to document, submit it, and remove it
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+    } else {
+      // For Typst, open in Typst.app
+      const typstAppUrl = new URL('https://typst.app/project');
+      window.open(typstAppUrl.toString(), '_blank');
     }
-
-    // Create a form element
-    const form = document.createElement('form');
-    form.method = 'post';
-    form.action = 'https://www.overleaf.com/docs';
-    form.target = '_blank';
-
-    // Create input for the LaTeX content
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'snip';
-    input.value = fullLatexDocument;
-
-    // Add input to form
-    form.appendChild(input);
-
-    // Add form to document, submit it, and remove it
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
   };
 
   return (
@@ -416,8 +432,22 @@ ${latexResult}
             </motion.div>
           </Box>
 
-          <Heading>Image to LaTeX Converter</Heading>
-          <Text>Upload images to convert them to LaTeX code</Text>
+          <Heading>Image to {outputFormat === 'latex' ? 'LaTeX' : 'Typst'} Converter</Heading>
+          <Text>Upload images to convert them to {outputFormat === 'latex' ? 'LaTeX' : 'Typst'} code</Text>
+
+          <FormControl display="flex" alignItems="center" justifyContent="center">
+            <FormLabel htmlFor="output-format" mb="0">
+              LaTeX
+            </FormLabel>
+            <Switch
+              id="output-format"
+              isChecked={outputFormat === 'typst'}
+              onChange={(e) => setOutputFormat(e.target.checked ? 'typst' : 'latex')}
+            />
+            <FormLabel htmlFor="output-format" mb="0" ml={2}>
+              Typst
+            </FormLabel>
+          </FormControl>
 
           {latexResult && (
             <Grid 
@@ -484,12 +514,12 @@ ${latexResult}
                       <Button
                         mt={2}
                         size="sm"
-                        onClick={openInOverleaf}
+                        onClick={openInEditor}
                         colorScheme="green"
                         isDisabled={!latexResult}
                         leftIcon={<ExternalLinkIcon />}
                       >
-                        Open in Overleaf
+                        Open in {outputFormat === 'latex' ? 'Overleaf' : 'Typst.app'}
                       </Button>
                     </HStack>
                   </motion.div>
@@ -681,7 +711,7 @@ ${latexResult}
                 isDisabled={selectedImages.length === 0}
                 leftIcon={<FiPlus size={18} />}
               >
-                Convert to LaTeX
+                Convert to {outputFormat === 'latex' ? 'LaTeX' : 'Typst'}
               </Button>
             </motion.div>
           </Box>
