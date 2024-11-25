@@ -4,12 +4,23 @@ const dotenv = require('dotenv');
 const { OpenAI } = require('openai');
 const fs = require('fs');
 const path = require('path');
+const latex = require('node-latex');
+const { Readable } = require('stream');
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 const upload = multer({ dest: 'uploads/' });
+
+// Create directories if they don't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+const publicDir = path.join(__dirname, 'public');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir);
+
+// Serve static files from public directory
+app.use('/', express.static(publicDir));
 
 const openai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
@@ -30,14 +41,14 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
       messages: [
         {
           role: "system",
-          content: "You are a LaTeX converter. You must respond with ONLY the LaTeX code needed to reproduce the image. No explanations, no markdown formatting, no additional text."
+          content: "You are a LaTeX converter. Return the complete LaTeX code needed to reproduce the image, including any necessary packages and document structure."
         },
         {
           role: "user",
           content: [
             { 
               type: "text", 
-              text: "Convert this image to LaTeX code. Return ONLY the LaTeX code with no additional text or formatting." 
+              text: "Convert this image to LaTeX code. Return the complete LaTeX document that would reproduce this image." 
             },
             {
               type: "image_url",
@@ -53,12 +64,12 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
     // Clean up uploaded file
     fs.unlinkSync(req.file.path);
 
-    // Clean the response if it contains markdown or explanations
+    // Clean the response
     let latex = completion.choices[0].message.content;
     if (latex.includes('```')) {
       latex = latex.split('```')[1].replace('latex', '').trim();
     }
-
+    
     res.json({ latex });
   } catch (error) {
     console.error('Error:', error);
@@ -68,27 +79,30 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
 
 app.post('/api/combine', async (req, res) => {
   try {
-    const { latexCodes } = req.body;
+    const { latexCodes, fix } = req.body;
     
     if (!latexCodes || !Array.isArray(latexCodes)) {
       return res.status(400).json({ error: 'Invalid LaTeX codes provided' });
     }
+
+    const prompt = fix 
+      ? `Fix this LaTeX code to make it render correctly:\n\n${latexCodes[0]}`
+      : `Combine these LaTeX documents into a single coherent document, preserving all necessary packages and structure:\n\n${latexCodes.join('\n\n=====\n\n')}`;
 
     const completion = await openai.chat.completions.create({
       model: "grok-beta",
       messages: [
         {
           role: "system",
-          content: "You are a LaTeX combiner. You must respond with ONLY the combined LaTeX code. No explanations, no markdown formatting, no additional text."
+          content: "You are a LaTeX processor. Return complete LaTeX documents with proper structure and all necessary packages."
         },
         {
           role: "user",
-          content: `Here are multiple LaTeX code snippets. Combine them into a single coherent LaTeX document. Return ONLY the combined LaTeX code with no additional text or formatting:\n\n${latexCodes.join('\n\n=====\n\n')}`
+          content: prompt
         }
       ]
     });
 
-    // Clean the response if it contains markdown or explanations
     let latex = completion.choices[0].message.content;
     if (latex.includes('```')) {
       latex = latex.split('```')[1].replace('latex', '').trim();
@@ -99,6 +113,45 @@ app.post('/api/combine', async (req, res) => {
     console.error('Error:', error);
     res.status(500).json({ error: 'Failed to combine LaTeX codes' });
   }
+});
+
+app.post('/api/compile', async (req, res) => {
+  const { latex: latexCode } = req.body;
+  console.log("LaTeX code:", latexCode);
+  if (!latexCode) {
+    return res.status(400).json({ error: 'No LaTeX code provided' });
+  }
+
+  const timestamp = Date.now();
+  const outputFile = path.join(publicDir, `${timestamp}.pdf`);
+
+  try {
+    const input = new Readable();
+    input.push(latexCode);
+    input.push(null);
+
+    const output = fs.createWriteStream(outputFile);
+    const pdf = latex(input);
+
+    await new Promise((resolve, reject) => {
+      pdf.pipe(output);
+      pdf.on('error', reject);
+      output.on('finish', resolve);
+    });
+
+    // Update the URL to point directly to the PDF in the public directory
+    res.json({ pdfUrl: `/${timestamp}.pdf` });
+  } catch (error) {
+    console.error('Compilation error:', error);
+    res.status(500).json({ 
+      error: 'PDF compilation failed',
+      details: error.message
+    });
+  }
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
 const PORT = process.env.PORT || 3001;

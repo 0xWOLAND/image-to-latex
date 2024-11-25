@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   ChakraProvider,
   Box,
@@ -16,21 +16,35 @@ import {
   Progress,
   Grid,
   GridItem,
+  Link,
+  useColorMode,
+  IconButton,
 } from '@chakra-ui/react';
-import { AddIcon, CloseIcon, RepeatIcon } from '@chakra-ui/icons';
-import 'katex/dist/katex.min.css';
-import { InlineMath, BlockMath } from 'react-katex';
+import { AddIcon, CloseIcon, DownloadIcon, ExternalLinkIcon, MoonIcon, SunIcon } from '@chakra-ui/icons';
+import { motion } from 'framer-motion';
+import { 
+  FiMoon, 
+  FiSun, 
+  FiUpload, 
+  FiX, 
+  FiDownload, 
+  FiCopy, 
+  FiPlus 
+} from 'react-icons/fi';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { tomorrow, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 function App() {
+  const { colorMode, toggleColorMode } = useColorMode();
   const [selectedImages, setSelectedImages] = useState([]);
   const [imagePreview, setImagePreview] = useState([]);
   const [latexResult, setLatexResult] = useState('');
+  const [pdfUrl, setPdfUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [isCompiling, setIsCompiling] = useState(false);
   const toast = useToast();
-  const [isFixingLatex, setIsFixingLatex] = useState(false);
-  const [renderError, setRenderError] = useState(null);
 
   const handleFile = (files) => {
     const validFiles = Array.from(files).filter(file => {
@@ -123,7 +137,7 @@ function App() {
 
         const data = await response.json();
         latexResults.push(data.latex);
-        setProgress((i + 1) * (80 / selectedImages.length)); // Use 80% for individual conversions
+        setProgress((i + 1) * (80 / selectedImages.length));
       }
 
       // If there's more than one image, combine the results
@@ -141,10 +155,13 @@ function App() {
         }
 
         const data = await response.json();
-        setLatexResult(data.combinedLatex);
+        setLatexResult(data.latex);
       } else {
         setLatexResult(latexResults[0]);
       }
+
+      // Compile to PDF
+      await compilePdf(latexResults.length > 1 ? latexResult : latexResults[0]);
 
       setProgress(100);
       
@@ -167,6 +184,51 @@ function App() {
     }
   };
 
+  const compilePdf = async (latex) => {
+    setIsCompiling(true);
+    console.log("Starting PDF compilation with LaTeX:", latex);
+    
+    try {
+      const response = await fetch('/api/compile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ latex }),
+      });
+
+      console.log("Received response:", response.status, response.statusText);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || 'Failed to compile PDF');
+      }
+
+      const data = await response.json();
+      console.log("Compilation successful, PDF URL:", data.pdfUrl);
+      setPdfUrl(`/files${data.pdfUrl}`);
+
+      toast({
+        title: 'PDF compiled successfully',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error("Compilation error:", error);
+      toast({
+        title: 'PDF Compilation failed',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setIsCompiling(false);
+      console.log("Compilation process completed");
+    }
+  };
+
   const clearImages = () => {
     setSelectedImages([]);
     setImagePreview([]);
@@ -179,90 +241,142 @@ function App() {
     setImagePreview(prev => prev.filter((_, i) => i !== index));
   };
 
-  const fixLatexCode = async (brokenLatex) => {
-    setIsFixingLatex(true);
-    try {
-      const response = await fetch('/api/combine', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          latexCodes: [brokenLatex],
-          fix: true, // Signal to the backend that we need a fix
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fix LaTeX code');
-      }
-
-      const data = await response.json();
-      setLatexResult(data.combinedLatex);
-      setRenderError(null);
-    } catch (error) {
-      toast({
-        title: 'Failed to fix LaTeX code',
-        description: error.message,
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsFixingLatex(false);
-    }
-  };
-
-  const handleLatexError = (error) => {
-    setRenderError(error);
-    toast({
-      title: 'LaTeX Rendering Error',
-      description: 'There was an error rendering the LaTeX. Click "Fix LaTeX" to attempt automatic correction.',
-      status: 'warning',
-      duration: 5000,
-      isClosable: true,
   return (
     <ChakraProvider>
       <Container maxW="container.xl" py={10}>
         <VStack spacing={8}>
+          <Box position="absolute" top="4" right="4">
+            <motion.div
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <IconButton
+                icon={colorMode === 'light' 
+                  ? <FiMoon size={20} /> 
+                  : <FiSun size={20} />
+                }
+                onClick={toggleColorMode}
+                aria-label={`Toggle ${colorMode === 'light' ? 'Dark' : 'Light'} Mode`}
+                variant="solid"
+                bg={colorMode === 'dark' ? 'gray.700' : 'gray.100'}
+                color={colorMode === 'dark' ? 'yellow.200' : 'gray.600'}
+                _hover={{
+                  bg: colorMode === 'dark' ? 'gray.600' : 'gray.200',
+                  color: colorMode === 'dark' ? 'yellow.300' : 'gray.700'
+                }}
+                transition="all 0.2s"
+              />
+            </motion.div>
+          </Box>
+
           <Heading>Image to LaTeX Converter</Heading>
           <Text>Upload images to convert them to LaTeX code</Text>
 
           {latexResult && (
-            <Grid templateColumns={["1fr", "1fr", "1fr 1fr"]} gap={6} w="full">
+            <Grid 
+              templateColumns="repeat(2, 1fr)" 
+              gap={6} 
+              w="full"
+              maxW="container.lg"
+            >
               <GridItem>
                 <Box w="full">
                   <Text mb={2} fontWeight="bold">
                     LaTeX Code:
                   </Text>
-                  <Textarea
-                    value={latexResult}
-                    isReadOnly
-                    minH="200px"
-                    fontFamily="mono"
-                  />
-                  <Button
-                    mt={2}
-                    size="sm"
-                    onClick={() => navigator.clipboard.writeText(latexResult)}
+                  <Box
+                    position="relative"
+                    h="500px"
+                    borderWidth={1}
+                    borderRadius="md"
+                    borderColor={colorMode === 'dark' ? 'gray.600' : 'gray.200'}
+                    overflow="auto"
                   >
-                    Copy to Clipboard
-                  </Button>
+                    <pre
+                      style={{
+                        margin: 0,
+                        height: '100%',
+                        padding: '16px',
+                        backgroundColor: colorMode === 'dark' ? '#1A202C' : 'white',
+                        fontSize: '14px',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'break-word',
+                      }}
+                    >
+                      {latexResult}
+                    </pre>
+                  </Box>
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Button
+                      mt={2}
+                      size="sm"
+                      onClick={() => navigator.clipboard.writeText(latexResult)}
+                      bg={colorMode === 'dark' ? 'gray.700' : 'gray.100'}
+                      _hover={{
+                        bg: colorMode === 'dark' ? 'gray.600' : 'gray.200'
+                      }}
+                      leftIcon={<FiCopy size={16} />}
+                    >
+                      Copy to Clipboard
+                    </Button>
+                  </motion.div>
                 </Box>
               </GridItem>
+              
               <GridItem>
                 <Box w="full">
                   <Text mb={2} fontWeight="bold">
-                    Preview:
+                    PDF Preview:
                   </Text>
                   <Box
                     p={4}
                     borderWidth={1}
                     borderRadius="md"
-                    minH="200px"
-                    overflowX="auto"
+                    h="500px"
+                    bg={colorMode === 'dark' ? 'gray.800' : 'gray.50'}
+                    borderColor={colorMode === 'dark' ? 'gray.600' : 'gray.200'}
                   >
-                    <BlockMath math={latexResult} errorColor="#ff0000" />
+                    {isCompiling ? (
+                      <VStack spacing={4}>
+                        <Text>Compiling PDF...</Text>
+                        <Progress size="sm" isIndeterminate w="full" />
+                      </VStack>
+                    ) : pdfUrl ? (
+                      <VStack spacing={4}>
+                        <Box w="full" h="400px">
+                          <iframe
+                            src={pdfUrl}
+                            width="100%"
+                            height="100%"
+                            style={{ border: 'none' }}
+                          />
+                        </Box>
+                        <motion.div
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <Button
+                            as={Link}
+                            href={pdfUrl}
+                            download
+                            leftIcon={<FiDownload size={18} />}
+                            colorScheme="blue"
+                            size="sm"
+                          >
+                            Download PDF
+                          </Button>
+                        </motion.div>
+                      </VStack>
+                    ) : (
+                      <Text color="gray.500">
+                        PDF preview will appear here after compilation
+                      </Text>
+                    )}
                   </Box>
                 </Box>
               </GridItem>
@@ -273,7 +387,12 @@ function App() {
             borderWidth={2}
             borderRadius="lg"
             borderStyle="dashed"
-            borderColor={isDragging ? "blue.500" : "gray.200"}
+            borderColor={isDragging 
+              ? "blue.500" 
+              : colorMode === 'light' 
+                ? "gray.200" 
+                : "gray.600"
+            }
             p={8}
             w="full"
             textAlign="center"
@@ -283,7 +402,13 @@ function App() {
             onDragOver={handleDrag}
             onDrop={handleDrop}
             transition="all 0.2s"
-            bg={isDragging ? "blue.50" : "transparent"}
+            bg={isDragging 
+              ? (colorMode === 'light' ? "blue.50" : "blue.900") 
+              : (colorMode === 'dark' ? 'gray.800' : 'transparent')
+            }
+            _hover={{
+              borderColor: colorMode === 'dark' ? 'gray.500' : 'gray.300'
+            }}
           >
             <Input
               type="file"
@@ -305,45 +430,63 @@ function App() {
                       mx="auto"
                       borderRadius="md"
                     />
-                    <Button
-                      position="absolute"
-                      top={2}
-                      right={2}
-                      size="xs"
-                      colorScheme="red"
-                      onClick={() => removeImage(index)}
+                    <motion.div
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px'
+                      }}
                     >
-                      <CloseIcon />
-                    </Button>
+                      <IconButton
+                        size="xs"
+                        colorScheme="red"
+                        onClick={() => removeImage(index)}
+                        icon={<FiX size={14} />}
+                      />
+                    </motion.div>
                   </Box>
                 ))}
               </SimpleGrid>
             )}
 
             <VStack spacing={4}>
-              <label htmlFor="image-upload">
-                <Button
-                  as="span"
-                  leftIcon={<AddIcon />}
-                  colorScheme="blue"
-                  cursor="pointer"
-                  size="sm"
+              <HStack spacing={4}>
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
-                  {imagePreview.length === 0 ? 'Select Images' : 'Add More Images'}
-                </Button>
-              </label>
+                  <label htmlFor="image-upload">
+                    <Button
+                      as="span"
+                      leftIcon={<FiUpload size={18} />}
+                      colorScheme="blue"
+                      cursor="pointer"
+                      size="sm"
+                    >
+                      {imagePreview.length === 0 ? 'Select Images' : 'Add More Images'}
+                    </Button>
+                  </label>
+                </motion.div>
 
-              {imagePreview.length > 0 && (
-                <Button
-                  leftIcon={<CloseIcon />}
-                  colorScheme="red"
-                  variant="outline"
-                  onClick={clearImages}
-                  size="sm"
-                >
-                  Clear All Images
-                </Button>
-              )}
+                {imagePreview.length > 0 && (
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Button
+                      leftIcon={<FiX size={18} />}
+                      colorScheme="red"
+                      variant="outline"
+                      onClick={clearImages}
+                      size="sm"
+                    >
+                      Clear All Images
+                    </Button>
+                  </motion.div>
+                )}
+              </HStack>
               
               <Text fontSize="sm" color="gray.500">
                 or drag and drop your images here
@@ -351,20 +494,39 @@ function App() {
             </VStack>
           </Box>
 
-          <Button
-            colorScheme="green"
-            isLoading={isLoading}
-            onClick={handleSubmit}
-            w="full"
-            isDisabled={selectedImages.length === 0}
+          <motion.div
+            whileHover={{ 
+              scale: selectedImages.length > 0 ? 1.02 : 1 
+            }}
+            whileTap={{ 
+              scale: selectedImages.length > 0 ? 0.98 : 1 
+            }}
           >
-            Convert to LaTeX
-          </Button>
+            <Button
+              colorScheme="green"
+              isLoading={isLoading}
+              onClick={handleSubmit}
+              w="full"
+              isDisabled={selectedImages.length === 0}
+              leftIcon={<FiPlus size={18} />}
+            >
+              Convert to LaTeX
+            </Button>
+          </motion.div>
 
           {isLoading && (
             <Box w="full">
-              <Progress value={progress} size="sm" colorScheme="green" />
-              <Text mt={2} fontSize="sm" color="gray.500" textAlign="center">
+              <Progress 
+                value={progress} 
+                size="sm" 
+                colorScheme={colorMode === 'dark' ? 'blue' : 'green'} 
+              />
+              <Text 
+                mt={2} 
+                fontSize="sm" 
+                color={colorMode === 'dark' ? 'gray.400' : 'gray.500'} 
+                textAlign="center"
+              >
                 Converting images... {Math.round(progress)}%
               </Text>
             </Box>
