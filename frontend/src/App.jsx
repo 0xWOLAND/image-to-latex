@@ -33,6 +33,23 @@ import {
 } from 'react-icons/fi';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import hljs from 'highlight.js/lib/core';
+import latex from 'highlight.js/lib/languages/latex';
+import 'highlight.js/styles/github-dark.css'; // for dark mode
+import 'highlight.js/styles/github.css'; // for light mode
+
+// Register the LaTeX language
+hljs.registerLanguage('latex', latex);
+
+function highlightLatex(code) {
+  // Basic LaTeX syntax highlighting rules
+  return code
+    .replace(/\\[a-zA-Z]+/g, match => `<span style="color: #2E86C1;">${match}</span>`) // commands
+    .replace(/\{([^}]+)\}/g, (match, content) => `<span style="color: #27AE60;">{</span>${content}<span style="color: #27AE60;">}</span>`) // braces
+    .replace(/\[([^\]]+)\]/g, (match, content) => `<span style="color: #E67E22;">[</span>${content}<span style="color: #E67E22;">]</span>`) // brackets
+    .replace(/\$([^$]+)\$/g, (match, content) => `<span style="color: #8E44AD;">$${content}$</span>`) // inline math
+    .replace(/%(.+)$/gm, (match, content) => `<span style="color: #7F8C8D;">%${content}</span>`); // comments
+}
 
 function App() {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -45,6 +62,20 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [isCompiling, setIsCompiling] = useState(false);
   const toast = useToast();
+
+  useEffect(() => {
+    // Add custom styles to handle light/dark mode
+    const style = document.createElement('style');
+    style.textContent = `
+      .hljs {
+        background: transparent !important;
+        padding: 0 !important;
+        color: ${colorMode === 'dark' ? '#E0E0E0' : '#2D3748'} !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, [colorMode]);
 
   const handleFile = (files) => {
     const validFiles = Array.from(files).filter(file => {
@@ -302,15 +333,19 @@ function App() {
                         margin: 0,
                         height: '100%',
                         padding: '16px',
-                        backgroundColor: colorMode === 'dark' ? '#1A202C' : 'white',
                         fontSize: '14px',
                         fontFamily: 'monospace',
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
                         overflowWrap: 'break-word',
                       }}
+                      className={colorMode === 'dark' ? 'github-dark' : 'github'}
                     >
-                      {latexResult}
+                      <code
+                        dangerouslySetInnerHTML={{
+                          __html: latexResult ? hljs.highlight(latexResult, { language: 'latex' }).value : ''
+                        }}
+                      />
                     </pre>
                   </Box>
                   <motion.div
