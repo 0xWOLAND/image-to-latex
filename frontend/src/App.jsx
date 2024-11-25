@@ -206,7 +206,8 @@ function App() {
 
       const data = await response.json();
       console.log("Compilation successful, PDF URL:", data.pdfUrl);
-      setPdfUrl(`/files${data.pdfUrl}`);
+      const baseUrl = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      setPdfUrl(`${baseUrl}${data.pdfUrl}`);
 
       toast({
         title: 'PDF compiled successfully',

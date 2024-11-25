@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const latex = require('node-latex');
 const { Readable } = require('stream');
+const cors = require('cors');
 
 dotenv.config();
 
@@ -19,8 +20,14 @@ const publicDir = path.join(__dirname, 'public');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir);
 
-// Serve static files from public directory
-app.use('/', express.static(publicDir));
+// Add CORS configuration
+app.use(cors());
+
+// Remove the duplicate static middleware
+// app.use('/', express.static(publicDir)); // Remove this line
+
+// Keep only this static middleware
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 const openai = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
@@ -123,7 +130,8 @@ app.post('/api/compile', async (req, res) => {
   }
 
   const timestamp = Date.now();
-  const outputFile = path.join(publicDir, `${timestamp}.pdf`);
+  const pdfFilename = `${timestamp}.pdf`;
+  const outputFile = path.join(publicDir, pdfFilename);
 
   try {
     const input = new Readable();
@@ -139,8 +147,14 @@ app.post('/api/compile', async (req, res) => {
       output.on('finish', resolve);
     });
 
-    // Update the URL to point directly to the PDF in the public directory
-    res.json({ pdfUrl: `/${timestamp}.pdf` });
+    // Log the file creation
+    console.log(`PDF file created at: ${outputFile}`);
+    console.log(`File exists: ${fs.existsSync(outputFile)}`);
+
+    res.json({
+      success: true,
+      pdfUrl: `/public/${pdfFilename}`
+    });
   } catch (error) {
     console.error('Compilation error:', error);
     res.status(500).json({ 
@@ -152,6 +166,19 @@ app.post('/api/compile', async (req, res) => {
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
+});
+
+// Add this debugging route to check if files exist
+app.get('/public/*', (req, res, next) => {
+  console.log('Attempting to access:', req.path);
+  console.log('Full file path:', path.join(__dirname, req.path));
+  next();
+});
+
+// Add error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something broke!', details: err.message });
 });
 
 const PORT = process.env.PORT || 3001;
