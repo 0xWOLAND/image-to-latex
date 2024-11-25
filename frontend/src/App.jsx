@@ -233,32 +233,12 @@ function App() {
         setProgress((i + 1) * (80 / selectedImages.length));
       }
 
-      let finalLatex;
-      
-      // If there's more than one image, combine the results
-      if (latexResults.length > 1) {
-        const response = await fetch('/api/combine', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ latexCodes: latexResults }),
-        });
+      // Combine LaTeX results locally
+      const combinedLatex = combineLatexDocuments(latexResults);
+      setLatexResult(combinedLatex);
 
-        if (!response.ok) {
-          throw new Error('Failed to combine LaTeX results');
-        }
-
-        const data = await response.json();
-        finalLatex = data.combinedLatex;
-        setLatexResult(finalLatex);
-      } else {
-        finalLatex = latexResults[0];
-        setLatexResult(finalLatex);
-      }
-
-      // Use finalLatex instead of latexResult
-      await compilePdf(finalLatex);
+      // Compile the combined result
+      await compilePdf(combinedLatex);
 
       setProgress(100);
       
@@ -471,6 +451,39 @@ ${latexResult}
       cleanup();
     };
   }, [tempImages]);
+
+  // Add this new function to combine LaTeX documents
+  const combineLatexDocuments = (latexDocs) => {
+    // Set to store unique packages
+    const packages = new Set();
+    // Array to store document contents
+    const contents = [];
+
+    latexDocs.forEach(doc => {
+      // Extract packages
+      const packageMatches = doc.match(/\\usepackage(\[.*?\])?\{.*?\}/g) || [];
+      packageMatches.forEach(pkg => packages.add(pkg));
+
+      // Extract content between \begin{document} and \end{document}
+      const contentMatch = doc.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
+      if (contentMatch) {
+        contents.push(contentMatch[1].trim());
+      } else {
+        // If no document environment found, add the whole content
+        contents.push(doc.trim());
+      }
+    });
+
+    // Build the combined document
+    return `\\documentclass{article}
+${Array.from(packages).join('\n')}
+
+\\begin{document}
+
+${contents.join('\n\n')}
+
+\\end{document}`;
+  };
 
   return (
     <ChakraProvider>

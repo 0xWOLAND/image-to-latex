@@ -136,59 +136,6 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
   }
 });
 
-app.post('/api/combine', async (req, res) => {
-  try {
-    const { latexCodes, fix } = req.body;
-    
-    if (!latexCodes || !Array.isArray(latexCodes)) {
-      return res.status(400).json({ error: 'Invalid LaTeX codes provided' });
-    }
-
-    const prompt = fix 
-      ? `Fix this LaTeX code to make it render correctly:\n\n${latexCodes[0]}`
-      : `Combine these LaTeX documents into a single coherent document. Return ONLY the LaTeX code without any markdown formatting or explanations:\n\n${latexCodes.join('\n\n')}`;
-
-    const completion = await openai.chat.completions.create({
-      model: "grok-beta",
-      messages: [
-        {
-          role: "system",
-          content: "You are a LaTeX processor. Return ONLY the LaTeX code without any explanations or markdown formatting. Always start with \\documentclass and include all necessary packages."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ]
-    });
-
-    let latex = completion.choices[0].message.content;
-
-    if (latex.includes('```')) {
-      const matches = latex.match(/```(?:latex)?([\s\S]*?)```/);
-      latex = matches ? matches[1].trim() : latex;
-    }
-
-    if (!latex.includes('\\documentclass')) {
-      latex = `\\documentclass{article}\n\\usepackage{amsmath}\n\\usepackage{amssymb}\n\\begin{document}\n${latex}\n\\end{document}`;
-    }
-
-    if (!latex || latex.trim().length === 0) {
-      throw new Error('No valid LaTeX content generated');
-    }
-    
-    res.json({ 
-      combinedLatex: latex,
-      success: true 
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      error: 'Failed to combine LaTeX codes',
-      details: error.message 
-    });
-  }
-});
-
 app.post('/api/compile', async (req, res) => {
   try {
     const { latex: latexCode } = req.body;
