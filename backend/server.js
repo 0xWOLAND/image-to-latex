@@ -94,6 +94,7 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
 
     const imageBuffer = fs.readFileSync(req.file.path);
     const base64Image = imageBuffer.toString('base64');
+    const context = req.body.context || '';
 
     const completion = await openai.chat.completions.create({
       model: "grok-vision-beta",
@@ -107,7 +108,7 @@ app.post('/api/convert', upload.single('image'), async (req, res) => {
           content: [
             { 
               type: "text", 
-              text: "Convert this image to LaTeX code. Return the complete LaTeX document that would reproduce this image." 
+              text: `Context about the document: ${context}\n\nConvert this image to LaTeX code. Return the complete LaTeX document that would reproduce this image.` 
             },
             {
               type: "image_url",

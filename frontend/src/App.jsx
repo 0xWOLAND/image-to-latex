@@ -30,7 +30,8 @@ import {
   FiDownload, 
   FiCopy, 
   FiPlus, 
-  FiFileText 
+  FiFileText, 
+  FiRefreshCw 
 } from 'react-icons/fi';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -63,7 +64,9 @@ function App() {
   const [isCompiling, setIsCompiling] = useState(false);
   const [isPdfProcessing, setIsPdfProcessing] = useState(false);
   const [tempImages, setTempImages] = useState([]);
+  const [documentContext, setDocumentContext] = useState('');
   const toast = useToast();
+  const [pdfError, setPdfError] = useState(false);
 
   useEffect(() => {
     const style = document.createElement('style');
@@ -134,37 +137,26 @@ function App() {
   }, [colorMode]);
 
   const handleFile = (files) => {
-    const file = files[0]; // Handle one file at a time
-    if (file.type.includes('pdf')) {
-      handlePdfUpload(file);
-      return;
-    }
-    
-    const validFiles = Array.from(files).filter(file => {
-      if (file.type.startsWith('image/')) {
-        return true;
-      }
-      toast({
-        title: 'Invalid file type',
-        description: `${file.name} is not an image file`,
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return false;
-    });
-
-    if (validFiles.length > 0) {
-      setSelectedImages(prev => [...prev, ...validFiles]);
-      
-      validFiles.forEach(file => {
+    Array.from(files).forEach(file => {
+      if (file.type.includes('pdf')) {
+        handlePdfUpload(file);
+      } else if (file.type.startsWith('image/')) {
+        setSelectedImages(prev => [...prev, file]);
         const reader = new FileReader();
         reader.onloadend = () => {
           setImagePreview(prev => [...prev, reader.result]);
         };
         reader.readAsDataURL(file);
-      });
-    }
+      } else {
+        toast({
+          title: 'Invalid file type',
+          description: `${file.name} is not an image or PDF file`,
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    });
   };
 
   const handleImageChange = (e) => {
@@ -218,6 +210,7 @@ function App() {
       for (let i = 0; i < selectedImages.length; i++) {
         const formData = new FormData();
         formData.append('image', selectedImages[i]);
+        formData.append('context', documentContext);
 
         const response = await fetch('/api/convert', {
           method: 'POST',
@@ -263,6 +256,7 @@ function App() {
 
   const compilePdf = async (latex) => {
     setIsCompiling(true);
+    setPdfError(false);
     
     try {
       const response = await fetch('/api/compile', {
@@ -281,6 +275,7 @@ function App() {
       const data = await response.json();
       const baseUrl = import.meta.env.DEV ? 'http://localhost:3001' : '';
       setPdfUrl(`${baseUrl}${data.pdfUrl}`);
+      setPdfError(false);
 
       toast({
         title: 'PDF compiled successfully',
@@ -289,6 +284,7 @@ function App() {
         isClosable: true,
       });
     } catch (error) {
+      setPdfError(true);
       toast({
         title: 'PDF Compilation failed',
         description: error.message,
@@ -613,13 +609,36 @@ ${contents.join('\n\n')}
                       </VStack>
                     ) : pdfUrl ? (
                       <VStack spacing={4}>
-                        <Box w="full" h="400px">
+                        <Box w="full" h="400px" position="relative">
                           <iframe
                             src={pdfUrl}
                             width="100%"
                             height="100%"
                             style={{ border: 'none' }}
+                            onError={() => setPdfError(true)}
                           />
+                          {pdfError && (
+                            <VStack
+                              position="absolute"
+                              top="0"
+                              left="0"
+                              right="0"
+                              bottom="0"
+                              justify="center"
+                              align="center"
+                              bg={colorMode === 'dark' ? 'rgba(23, 25, 35, 0.9)' : 'rgba(255, 255, 255, 0.9)'}
+                            >
+                              <Text color="red.500" mb={4}>Failed to load PDF preview</Text>
+                              <Button
+                                onClick={() => compilePdf(latexResult)}
+                                leftIcon={<FiRefreshCw size={16} />}
+                                colorScheme="blue"
+                                size="sm"
+                              >
+                                Retry Compilation
+                              </Button>
+                            </VStack>
+                          )}
                         </Box>
                         <motion.div
                           whileHover={{ scale: 1.02 }}
@@ -679,7 +698,7 @@ ${contents.join('\n\n')}
           >
             <Input
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               display="none"
               onChange={handleImageChange}
               id="image-upload"
@@ -732,7 +751,7 @@ ${contents.join('\n\n')}
                       cursor="pointer"
                       size="sm"
                     >
-                      {imagePreview.length === 0 ? 'Select Images' : 'Add More Images'}
+                      {imagePreview.length === 0 ? 'Select Images or PDFs' : 'Add More Files'}
                     </Button>
                   </label>
                 </motion.div>
@@ -756,12 +775,27 @@ ${contents.join('\n\n')}
               </HStack>
               
               <Text fontSize="sm" color="gray.500">
-                or drag and drop your images/PDF here
+                or drag and drop your images or PDFs here
               </Text>
             </VStack>
           </Box>
 
           <Box w="container.lg" maxW="container.lg" mx="auto">
+            <Text mb={2} fontWeight="bold">
+              Document Context (Optional):
+            </Text>
+            <Textarea
+              value={documentContext}
+              onChange={(e) => setDocumentContext(e.target.value)}
+              placeholder="Provide context about the document (e.g., 'This is a math homework about linear algebra' or 'These are chemical equations about organic chemistry')"
+              size="sm"
+              mb={4}
+              resize="vertical"
+              maxH="200px"
+              bg={colorMode === 'dark' ? 'gray.800' : 'white'}
+              borderColor={colorMode === 'dark' ? 'gray.600' : 'gray.200'}
+            />
+            
             <motion.div
               whileHover={{ 
                 scale: selectedImages.length > 0 ? 1.02 : 1 
