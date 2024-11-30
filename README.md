@@ -29,3 +29,9 @@ pnpm start
 cd frontend
 pnpm start
 ```
+
+Environment variables
+```bash
+XAI_API_KEY=<XAI API Key>
+PORT=3001
+```
