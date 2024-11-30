@@ -1,5 +1,6 @@
 # Image to LaTeX Converter
 
+![Screenshot](logo.png)
 A web application that converts images containing mathematical equations, diagrams, and text into LaTeX code. The application supports both single and multiple image uploads, PDF uploads, and provides real-time conversion progress feedback.
 
 ## Prerequisites
