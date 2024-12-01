@@ -1,20 +1,23 @@
-const express = require('express');
-const multer = require('multer');
-const dotenv = require('dotenv');
-const { OpenAI } = require('openai');
-const fs = require('fs');
-const path = require('path');
-const latex = require('node-latex');
-const { Readable } = require('stream');
-const cors = require('cors');
-const { exec } = require('child_process');
-const util = require('util');
-const execAsync = util.promisify(exec);
+import express from 'express';
+import multer from 'multer';
+import dotenv from 'dotenv';
+import { OpenAI } from 'openai';
+import fs from 'fs';
+import path from 'path';
+import cors from 'cors';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { fromPath } from 'pdf2pic';
+import sharp from 'sharp';
+import { EventEmitter } from 'events';
+import fetch from 'node-fetch';
+import { fileURLToPath } from 'url';
 
-// Add at the top with other imports
-const { fromPath } = require('pdf2pic');
-const sharp = require('sharp');
-const EventEmitter = require('events');
+// Convert __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const execAsync = promisify(exec);
 const progressEmitter = new EventEmitter();
 
 dotenv.config();
@@ -31,9 +34,6 @@ if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir);
 
 // Add CORS configuration
 app.use(cors());
-
-// Remove the duplicate static middleware
-// app.use('/', express.static(publicDir)); // Remove this line
 
 // Keep only this static middleware
 app.use('/public', express.static(path.join(__dirname, 'public')));
@@ -279,28 +279,39 @@ app.post('/api/compile', async (req, res) => {
       });
     }
 
+    // Encode the LaTeX content for URL
+    const encodedLatex = encodeURIComponent(latexCode);
+    
+    // Make request to latex-online service
+    const response = await fetch(`https://latexonline.cc/compile?text=${encodedLatex}&command=pdflatex`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/pdf'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`LaTeX compilation failed: ${errorText}`);
+    }
+
+    // Get the PDF buffer using arrayBuffer
+    const arrayBuffer = await response.arrayBuffer();
+    const pdfBuffer = Buffer.from(arrayBuffer);
+
+    // Save the PDF locally
     const timestamp = Date.now();
     const pdfFilename = `${timestamp}.pdf`;
     const outputFile = path.join(publicDir, pdfFilename);
-
-    const input = new Readable();
-    input.push(latexCode);
-    input.push(null);
-
-    const output = fs.createWriteStream(outputFile);
-    const pdf = latex(input);
-
-    await new Promise((resolve, reject) => {
-      pdf.pipe(output);
-      pdf.on('error', reject);
-      output.on('finish', resolve);
-    });
+    
+    fs.writeFileSync(outputFile, pdfBuffer);
 
     res.json({
       success: true,
       pdfUrl: `/public/${pdfFilename}`
     });
   } catch (error) {
+    console.error('Compilation error:', error);
     res.status(500).json({ 
       error: 'PDF compilation failed',
       details: error.message

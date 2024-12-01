@@ -2,6 +2,8 @@
 
 ![Screenshot](output.gif)
 
+> **Note:** PDF processing is not available in the Vercel hosted version of this application. To use PDF processing features, please run the application locally.
+
 A web application that converts images containing mathematical equations, diagrams, and text into LaTeX code. The application supports both single and multiple image uploads, PDF uploads, and provides real-time conversion progress feedback.
 
 ## Prerequisites
